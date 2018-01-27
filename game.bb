@@ -1,7 +1,10 @@
 Const WIN_W = 640, WIN_H = 480
+Const GAME_STAGE_W = WIN_W-32
 Graphics WIN_W, WIN_H, 8, 2
 
 SeedRnd MilliSecs()
+
+Include "bitmapfont.bb"
 
 Global frametimer=CreateTimer(60)
 Global starttime=MilliSecs(),elapsedtime,fpscounter,curfps
@@ -37,10 +40,6 @@ End Function
 Function distanceTo#(x, y, x2, y2)
 	Return Sqr((x-x2)^2 + (y-y2)^2)
 End Function 
-
-Function frame%(cell%, size%) 
-	Return cell * size + 1 + cell
-End Function
 
 Function drawLine(sx, sy, ex, ey, w%, interval%)
 	Local a# = ATan2(ey-sy, ex-sx)
@@ -97,8 +96,10 @@ Function drawTriangle(x%, y%, s%, angle#)
 	Line p1x, p1y, p2x, p2y
 	Line p2x, p2y, p3x, p3y
 	Line p1x, p1y, p3x, p3y
-	Color 255, 255, 255
 End Function
+
+Global offsetX#
+Global offsetY#
 
 Global time# = 1
 Const SLOW_TIME# = 0.3
@@ -177,23 +178,33 @@ Function addPlayer(x2#, y2#, typeOf2)
 End Function 
 
 Function updatePlayer()
-	For p.player = Each player
-		p\x = p\x + p\velX
-		p\y = p\y + p\velY
-		
-		p\velX = p\velX * p\friction
-		p\velY = p\velY * p\friction
-		
+	For p.player = Each player		
 		p\amp = lerp(p\amp, 1, 0.1)
 		p\wobbleCount = p\wobbleCount + 1
 		p\wobble = p\amp * Cos(p\wobbleCount*8)
 		
+		If p\x >= 0 Or p\x <= GAME_STAGE_W-p\size/2 Then p\x = p\x + p\velX
+		If p\y >= 0 Or p\y <= WIN_H-p\size/2 Then p\y = p\y + p\velY
+		
+		If p\x <= 0 Or p\x >= GAME_STAGE_W-p\size/2 Then 
+			p\x = p\x - p\velX
+			p\velX = 0
+		End If 
+		If p\y <= 0 Or p\y >= WIN_H-p\size/2 Then
+			p\y = p\y - p\velY
+	 		p\velY = 0
+		End If
+		
+		p\velX = p\velX * p\friction
+		p\velY = p\velY * p\friction
+		
 		If JoyY(p\typeOf) >= JOY_THRESHOLD Or JoyY(p\typeOf) <= -JOY_THRESHOLD Or JoyX(p\typeOf) >= JOY_THRESHOLD Or JoyX(p\typeOf) <= -JOY_THRESHOLD Then 
 			p\angle = ATan2(JoyY(p\typeOf), JoyX(p\typeOf))
 			
-			p\velX = (p\speed * Cos(p\angle))
-			p\velY = (p\speed * Sin(p\angle))
+			If p\x >= 0 Or p\x <= GAME_STAGE_W-p\size/2 Then p\velX = (p\speed * Cos(p\angle))
+			If p\y >= 0 Or p\y <= WIN_H-p\size/2 Then p\velY = (p\speed * Sin(p\angle))
 		End If
+		
 		p\crosshairX = lerp(p\crosshairX, (Cos(p\shootAngle) * p\size), 0.3)
 		p\crosshairY = lerp(p\crossHairY, (Sin(p\shootAngle) * p\size), 0.3)
 		If Sqr(JoyYaw(p\typeOf)^2 + JoyPitch(p\typeOf)^2) >= 50 Then p\shootAngle = ATan2(JoyYaw(p\typeOf), JoyPitch(p\typeOf))
@@ -238,10 +249,28 @@ Function updatePlayer()
 		Else
 			p\buildCountBar = lerp(p\buildCountBar, (Float(p\buildCount)/Float(p\maxBuildCount))*p\size, 0.3)
 			
-			Local canBuild
-			
-			For l.loot = Each loot
-				canBuild = l\builderIsNear
+			For l.loot = Each loot				
+				If l\builderIsNear Then
+					buildInstructionsX = lerp(buildInstructionsX, p\x, 0.2)
+					buildInstructionsY = lerp(buildInstructionsY, p\y-p\size-SPRITE_SIZE*2, 0.2)
+					If JoyDown(1) Then 
+						p\buildCount = p\buildCount + 1
+					Else
+						p\buildCount = 0
+					End If
+				Else
+					Local checkIfAny = 0
+					For l1.loot = Each loot
+						If l1\builderIsNear Then
+							checkIfAny = 1
+						End If 
+					Next
+					If checkIfAny = 0 Then 
+						buildInstructionsX = lerp(buildInstructionsX, WIN_W/2, 0.3)
+						buildInstructionsY = lerp(buildInstructionsY, -WIN_H, 0.3)
+						p\buildCount = 0
+					End If
+				End If
 				
 				If p\buildCount >= p\maxbuildCount Then
 					l\healedCount = 1
@@ -251,30 +280,45 @@ Function updatePlayer()
 					growPlayer(0, 1)
 				End If
 			Next
-
-			If canBuild Then
-				If JoyDown(1) Then 
-					p\buildCount = p\buildCount + 1
-				Else
-					p\buildCount = 0
-				End If
-			Else
-				p\buildCount = 0
-			End If
 		End If 
 	Next
 End Function
 
+Global midPointX#
+Global midPointY#
+
+Function getMidPoint()
+	Local px#
+	Local py#
+	Local p1x#
+	Local p1y#
+	
+	For p.player = Each player
+		If p\typeOf Then
+			p1x = p\x
+			p1y = p\y
+		Else
+			px = p\x
+			py = p\y
+		End If 
+	Next
+	
+	a# = ATan2(p1y-py, p1x-px)
+	d# = distanceTo(p1x, p1y, px, py)/2
+	
+	midPointX = (d * Cos(a)) + px
+	midPointY = (d * Sin(a)) + py
+End Function
+
 Function drawPlayer()
 	For p.player = Each player
-		Plot p\x, p\y
 		Color p\r, p\g, p\b
-		Rect p\x-p\size/2-p\wobble/2, p\y-p\size/2-p\wobble/2, p\size+p\wobble, p\size+p\wobble
+		Rect p\x-p\size/2-p\wobble/2-offsetX, p\y-p\size/2-p\wobble/2-offsetY, p\size+p\wobble, p\size+p\wobble
 		Color p\fireRate, 255-p\fireRate*2, 0
-		Rect p\x-p\size/2, p\y-p\size/2-8, p\fireRateBar, 4
+		Rect p\x-p\size/2-offsetX, p\y-p\size/2-8-offsetY, p\fireRateBar, 4
 		Color 255, 255, 255
-		Rect (p\x-p\size/2)-8, p\y-p\size/2, 4, p\buildCountBar
-		drawTriangle(p\x + p\crosshairX, (p\y-1) + p\crosshairY, p\size/2, p\shootAngle)
+		Rect (p\x-p\size/2)-8-offsetX, p\y-p\size/2-offsetY, 4, p\buildCountBar
+		drawTriangle(p\x + p\crosshairX -offsetX, (p\y-1) + p\crosshairY -offsetY, p\size/2, p\shootAngle)
 	Next
 End Function
 
@@ -335,7 +379,7 @@ End Function
 Function drawProjectile()
 	For p.projectile = Each projectile
 		Color p\r, p\g, p\b
-		drawLine(p\x, p\y, p\x + Cos(p\angle) * p\size, p\y + Sin(p\angle) * p\size, p\width, 0)
+		drawLine(p\x-offsetX, p\y-offsetY, (p\x-offsetX) + Cos(p\angle) * p\size , (p\y-offsetY) + Sin(p\angle) * p\size, p\width, 0)
 		Color 255, 255, 255
 	Next
 End Function
@@ -451,18 +495,18 @@ End Function
 
 Function drawLoot()
 	For l.loot = Each loot
-		Rect l\x-l\size/2, l\y-l\size/2, l\size, l\size, 0
-		Oval (l\x+1)-(l\size-2)/2, (l\y+1)-(l\size-2)/2, l\size-2, l\size-2, 0
+		Rect l\x-l\size/2-offsetX, l\y-l\size/2-offsetY, l\size, l\size, 0
+		Oval (l\x+1)-(l\size-2)/2-offsetX, (l\y+1)-(l\size-2)/2-offsetY, l\size-2, l\size-2, 0
 		Color l\r, l\g, l\b
-		Oval (l\x+1)-l\lifeSize/2, (l\y+1)-l\lifeSize/2, l\lifeSize, l\lifeSize, 1
+		Oval (l\x+1)-l\lifeSize/2-offsetX, (l\y+1)-l\lifeSize/2-offsetY, l\lifeSize, l\lifeSize, 1
 		Color 255, 255, 255
 	
 		If l\builderIsNear Then
 			For p.player = Each player
 				If p\typeOf = 0 Then 
-					Line p\x, p\y, l\x, l\y
-					Oval p\x-2, p\y-2, 4, 4
-					Oval l\x-2, l\y-2, 4, 4		
+					Line p\x-offsetX, p\y-offsetY, l\x-offsetX, l\y-offsetY
+					Oval p\x-2-offsetX, p\y-2-offsetY, 4, 4
+					Oval l\x-2-offsetX, l\y-2-offsetY, 4, 4		
 				End If
 			Next
 		End If
@@ -470,30 +514,79 @@ Function drawLoot()
 End Function
 
 Function restartGame()
-
+	player1Won = 0
+	player2Won = 0
 End Function
 
-Function updateLevel()
+Global player1Won
+Global player2Won
 
+Function updateLevel()
+	For p.player = Each player
+		If p\typeOf Then
+			If p\size <= 5 Then player1won = 1
+		Else
+			If p\size <= 5 Then player1won = 1
+		End If
+	Next
 End Function
 
 Function generateLevel()
-
+	For i = 0 To 4
+		Local x = (SPRITE_SIZE*2) * Rand(WIN_W/(SPRITE_SIZE*2))
+		Local y = (SPRITE_SIZE*2) * Rand(WIN_H/(SPRITE_SIZE*2)) 
+		
+		If i = 0 Then addLoot(x, y)
+		
+		a = 1
+		While a
+			For l.loot = Each loot
+				If collision(l\x-l\size/2, l\y-l\size/2, l\size, l\size, x-l\size/2, y-l\size/2, l\size, l\size) And x < WIN_W-l\size And x > 0 And y < WIN_H-l\size And y > 0 Then
+					x = (SPRITE_SIZE*2) * Rand(WIN_W/(SPRITE_SIZE*2))
+					y = (SPRITE_SIZE*2) * Rand(WIN_H/(SPRITE_SIZE*2))
+				Else 
+					a = 0
+				End If
+			Next
+		Wend 
+		
+		addLoot(x, y)
+	Next
 End Function
 
 Function update()
-	updatePlayer()
-	updateProjectile()
-	updateLoot()
-	
-	updateLevel()
+	If player1Won = 0 And player2Won = 0 Then
+		updatePlayer()
+		updateProjectile()
+		updateLoot()
+		
+		updateLevel()
+	End If 
 End Function 
+
+Global buildInstructionsX# = WIN_W/2
+Global buildInstructionsY# = -WIN_H/2
 
 Function draw()
 	drawPlayer()
 	drawProjectile()
 	drawLoot()
+	
+	Line 0-offsetX, 0-offsetY, -offsetX, WIN_H-offsetY
+	Line GAME_STAGE_W-offsetX, 0-offsetY, GAME_STAGE_W-offsetX, WIN_W-offsetY
+	
+	drawText(buildInstructionsX-offsetX, buildInstructionsY-offsetY, "PRESS : TO FIX BOX", 1)
+	
+	If player1Won Then 
+		Text WIN_W/2, WIN_H/2, "PLAYER 1 WON", 1, 1
+	End If 
+	
+	If player2Won Then
+		Text WIN_W/2, WIN_H/2, "PLAYER 2 WON", 1, 1
+	End If
 End Function
+
+generateLevel()
 
 addPlayer(100, 200, 0)
 addPlayer(300, 300, 1)
@@ -506,5 +599,12 @@ While Not KeyHit(1)
 	Cls 
 	update()
 	draw()
+	
+	getMidPoint()
+	
+	offsetX = lerp(offsetX, midPointX-WIN_W/2, 0.1)
+	
+	;drawText(200, 200, "ABCDZ 012345679 :;<=", 0)
+
 	Flip
 Wend
