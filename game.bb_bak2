@@ -83,7 +83,7 @@ Function lerp#(x#, y#, t#)
 End Function
 
 Function drawTriangle(x%, y%, s%, angle#)
-	Local r# = 120
+	Local r# = 120+Rnd(-16, 16)
 
 	Local p1x# = x + Cos(angle) * s
 	Local p1y# = y + Sin(angle) * s

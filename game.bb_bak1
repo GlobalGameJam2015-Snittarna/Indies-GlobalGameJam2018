@@ -1,5 +1,5 @@
 Const WIN_W = 640, WIN_H = 480
-Graphics WIN_W, WIN_H, 8, 2
+Graphics WIN_W, WIN_H, 8, 1
 
 SeedRnd MilliSecs()
 
