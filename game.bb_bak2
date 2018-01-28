@@ -23,6 +23,13 @@ Const JOY_THRESHOLD# = 0.4
 
 Const SPRITE_SIZE = 16
 
+Const WATCH_DOG = 1
+Const WATCH_DOG_MAX = 500
+
+.start
+
+Global watchDogCount
+
 Function collision(x, y, w, h, x2, y2, w2, h2)
 	If y >= y2 + h2 Then Return False 
 	If x >= x2 + w2 Then Return False 
@@ -98,8 +105,8 @@ Function drawTriangle(x%, y%, s%, angle#)
 	Line p1x, p1y, p3x, p3y
 End Function
 
-Global offsetX#
-Global offsetY#
+Global offsetX# = 0
+Global offsetY# = 0
 
 Global time# = 1
 Const SLOW_TIME# = 0.3
@@ -119,12 +126,12 @@ Type player
 	
 	Field friction#
 	
-	Field fireRate%
-	Field maxFireRate%
+	Field fireRate#
+	Field maxFireRate#
 	Field fireRateBar#
 	
-	Field buildCount%
-	Field maxBuildCount%
+	Field buildCount#
+	Field maxBuildCount#
 	Field buildCountBar#
 	
 	Field typeOf
@@ -139,7 +146,7 @@ Type player
 	Field r#, g#, b#
 	Field orignalR%, orignalG%, orignalB%
 	
-	Field hitCount%
+	Field hitCount#
 	
 	Field destroy
 End Type
@@ -183,26 +190,28 @@ Function updatePlayer()
 		p\wobbleCount = p\wobbleCount + 1
 		p\wobble = p\amp * Cos(p\wobbleCount*8)
 		
-		If p\x >= 0 Or p\x <= GAME_STAGE_W-p\size/2 Then p\x = p\x + p\velX
-		If p\y >= 0 Or p\y <= WIN_H-p\size/2 Then p\y = p\y + p\velY
+		If p\x >= 0 Or p\x <= GAME_STAGE_W-p\size/2 Then p\x = p\x + p\velX * time
+		If p\y >= 0 Or p\y <= WIN_H-p\size/2 Then p\y = p\y + p\velY * time
 		
 		If p\x <= 0 Or p\x >= GAME_STAGE_W-p\size/2 Then 
-			p\x = p\x - p\velX
+			p\x = p\x - p\velX * time
 			p\velX = 0
 		End If 
 		If p\y <= 0 Or p\y >= WIN_H-p\size/2 Then
-			p\y = p\y - p\velY
+			p\y = p\y - p\velY * time
 	 		p\velY = 0
 		End If
 		
-		p\velX = p\velX * p\friction
-		p\velY = p\velY * p\friction
+		p\velX = p\velX * p\friction * time
+		p\velY = p\velY * p\friction * time
 		
 		If JoyY(p\typeOf) >= JOY_THRESHOLD Or JoyY(p\typeOf) <= -JOY_THRESHOLD Or JoyX(p\typeOf) >= JOY_THRESHOLD Or JoyX(p\typeOf) <= -JOY_THRESHOLD Then 
 			p\angle = ATan2(JoyY(p\typeOf), JoyX(p\typeOf))
 			
 			If p\x >= 0 Or p\x <= GAME_STAGE_W-p\size/2 Then p\velX = (p\speed * Cos(p\angle))
 			If p\y >= 0 Or p\y <= WIN_H-p\size/2 Then p\velY = (p\speed * Sin(p\angle))
+			
+			watchDogCount = 0
 		End If
 		
 		p\crosshairX = lerp(p\crosshairX, (Cos(p\shootAngle) * p\size), 0.3)
@@ -211,21 +220,22 @@ Function updatePlayer()
 		p\fireRateBar = lerp(p\fireRateBar, (Float(p\fireRate)/Float(p\maxFireRate))*p\size, 0.3)
 		If JoyZ(p\typeOf) <= -0.9 Then
 			If p\typeOf Then
-				p\fireRate = p\fireRate + 1
+				p\fireRate = p\fireRate + (1/time); * time)
 				
 				If p\fireRate >= p\maxFireRate Then 
 					addProjectile(p\x, p\y, p\shootAngle, 3+Abs(p\velX), 8*2, 4, p\typeOf)
 					p\fireRate = 0
 				End If
 			Else 
-				p\fireRate = p\fireRate + 1
+				p\fireRate = p\fireRate + (1); * time)
 				
-				If p\fireRate = p\maxFireRate Or p\fireRate = p\maxFireRate-8 Or p\fireRate = p\maxFireRate-8*2 Then
+				If Int(p\fireRate) = Int(p\maxFireRate) Or Int(p\fireRate) = Int(p\maxFireRate-8) Or Int(p\fireRate) = Int(p\maxFireRate-8*2) Then
 					addProjectile(p\x, p\y, p\shootAngle, 5+Abs(p\velX), 4, 2, p\typeOf)
 				End If
 			
 				If p\fireRate >= p\maxFireRate Then p\fireRate = 0
 			End If
+			watchDogCount = 0
 		Else
 			p\fireRate = 0
 		End If 
@@ -233,7 +243,8 @@ Function updatePlayer()
 		p\size = lerp(p\size, p\targetSize, 0.1)
  		
 		If p\hitCount >= 1 Then
-			p\hitCount = p\hitCount + 1
+			p\hitCount = p\hitCount + (1 * time)
+			Text 0, 64, p\hitCount
 			If p\hitCount >= 32 Then p\hitCount = 0
 			p\r = lerp(p\r, 255, 0.2)
 			p\g = lerp(p\g, 0, 0.4)
@@ -251,10 +262,10 @@ Function updatePlayer()
 			
 			For l.loot = Each loot				
 				If l\builderIsNear Then
-					buildInstructionsX = lerp(buildInstructionsX, p\x, 0.3)
-					buildInstructionsY = lerp(buildInstructionsY, p\y, 0.3)
+					buildInstructionsX = lerp(buildInstructionsX, p\x, 0.2)
+					buildInstructionsY = lerp(buildInstructionsY, p\y-p\size-SPRITE_SIZE*2, 0.2)
 					If JoyDown(1) Then 
-						p\buildCount = p\buildCount + 1
+						p\buildCount = p\buildCount + (1 * time)
 					Else
 						p\buildCount = 0
 					End If
@@ -284,8 +295,8 @@ Function updatePlayer()
 	Next
 End Function
 
-Global midPointX#
-Global midPointY#
+Global midPointX# = 0
+Global midPointY# = 0
 
 Function getMidPoint()
 	Local px#
@@ -355,8 +366,12 @@ End Function
 
 Function updateProjectile()
 	For p.projectile = Each projectile
-		p\x = p\x + (p\speed * Cos(p\angle))
-		p\y = p\y + (p\speed * Sin(p\angle))
+		p\x = p\x + (p\speed * Cos(p\angle)) * time
+		p\y = p\y + (p\speed * Sin(p\angle)) * time
+		
+		If p\x >= GAME_STAGE_W Or p\x <= 0 Or p\y >= WIN_H Or p\y <= 0 Then 
+			p\destroy = 1
+		End If
 		
 		For pl.player = Each player
 			If p\tag <> pl\typeOf And lineCollision(p\x, p\y, p\x + Cos(p\angle) * p\size, p\y + Sin(p\angle) * p\size, 2, pl\x-pl\size/2, pl\y-pl\size/2, pl\size+pl\wobble, pl\size+pl\wobble) Then
@@ -388,13 +403,13 @@ Type loot
 	Field x%
 	Field y%
 	
-	Field life%
+	Field life#
 	Field maxLife%
 	Field lifeSize#
-	Field lifeTime
+	Field lifeTime#
 	
-	Field hitCount%
-	Field healedCount%
+	Field hitCount#
+	Field healedCount#
 	
 	Field builderIsNear
 
@@ -427,15 +442,15 @@ End Function
 
 Function updateLoot()
 	For l.loot = Each loot
-		l\lifeTime = l\lifeTime - 1
+		;l\lifeTime = l\lifeTime - 1 * time
 		If l\lifeTime <= 32 Then 
 			l\r = Rand(255)
 			l\g = Rand(255)
 			l\b = Rand(255)
 		End If
 		If l\lifeTime <= 0 Or l\life < 0 Then
-			l\size = l\size - 1
-			l\lifeSize = l\lifeSize - 1
+			l\size = l\size - 1 * time
+			l\lifeSize = l\lifeSize - 1 * time
 			l\builderIsNear = 0
 			
 			If l\size < 1 Then l\destroy = 1
@@ -444,7 +459,7 @@ Function updateLoot()
 		End If
 		
 		If l\hitCount >= 1 Then
-			l\hitCount = l\hitCount + 1
+			l\hitCount = l\hitCount + 1 * time
 			l\r = lerp(l\r, 255, 0.1)
 			l\g = lerp(l\g, 0, 0.1)
 			l\b = lerp(l\b, 0, 0.1)
@@ -482,8 +497,8 @@ Function updateLoot()
 		For p.projectile = Each projectile
 			If lineCollision(p\x, p\y, p\x + Cos(p\angle) * p\size, p\y + Sin(p\angle) * p\size, 2, l\x-l\size/2, l\y-l\size/2, l\size, l\size) Then
 				If p\tag Then 
-					l\life = l\life - 1
-					l\hitCount = 1
+					l\life = l\life - 1 * time
+					l\hitCount = 1 
 				End If 
 				p\destroy = 1
 			End If
@@ -513,20 +528,121 @@ Function drawLoot()
 	Next
 End Function
 
+Type timePickUp 
+	Field x%
+	Field y%
+	
+	Field lifeTime#
+	Field size#
+	
+	Field clockAngle#
+	
+	Field wobble#
+	Field wobbleCount#
+	
+	Field destroy
+End Type
+
+Function addTimePickUp(x2, y2)
+	t.timePickUp = New timePickUp
+	t\x = x2
+	t\y = y2
+	
+	t\clockAngle = Rnd(360)
+	t\size = SPRITE_SIZE
+End Function
+
+Function updateTimePickUp()
+	For t.timePickUp = Each timePickUp
+		t\clockAngle = t\clockAngle + 1
+		 
+		t\lifeTime = t\lifeTime + 1 * time
+		If t\lifeTime >= 128*3 Then 
+			t\size = lerp(t\size, 0, 0.1)
+			If t\size <= 0.1 Then t\destroy = 1
+		End If 
+		
+		For p.player = Each player
+			If collision(p\x-p\size/2, p\y-p\size/2, p\size, p\size, t\x-t\size/2, t\y-t\size/2, t\size, t\size) Then 
+				time = SLOW_TIME
+				t\destroy = 1
+			End If 
+		Next
+		
+		If t\destroy Then Delete t
+	Next
+End Function
+
+Function drawTimePickUp()
+	For t.timePickUp = Each timePickUp
+		Oval t\x-t\size/2-offsetX, t\y-t\size/2-offsetY, t\size, t\size, 0
+		
+		Line t\x-offsetX, t\y-offsetY, t\x-offsetX + (Cos(t\clockAngle) * t\size/4), t\y-offsetY+(Sin(t\clockAngle) * t\size/4)
+		
+		Line t\x-offsetX, t\y-offsetY, t\x-offsetX + (Cos(t\clockAngle*0.2) * t\size/3), t\y-offsetY+(Sin(t\clockAngle*0.2) * t\size/3)
+	Next
+End Function 
+
 Function restartGame()
 	player1Won = 0
 	player2Won = 0
+	
+	For l.loot = Each loot
+		Delete l
+	Next
+	
+	For p.player = Each player
+		Delete p
+	Next
+	
+	For pr.projectile = Each projectile
+		Delete pr
+	Next
+	
+	For t.timePickUp = Each timePickUp
+		Delete t
+	Next
+	
+	addPlayer(32, WIN_H/2, 0)
+	addPlayer(GAME_STAGE_W - 64, WIN_H/2, 1)
+	
+	generateLevel()
 End Function
 
-Global player1Won
-Global player2Won
+Global player1Won = 0
+Global player2Won = 0
+
+Global startScreen = 1
+
+Global addClockCount = 0
+Global maxAddClockCount = 128
 
 Function updateLevel()
+	addClockCount = addClockCount + 1
+	
+	If addClockCount >= maxAddClockCount Then
+		Local x 		
+		Local y 
+		a = 1
+		While a
+			x = Rand(8, GAME_STAGE_W-32)
+			y = Rand(8, WIN_H-32)
+
+			For l.loot = Each loot
+				If collision(l\x-l\size/2, l\y-l\size/2, l\size, l\size, x-SPRITE_SIZE/2, y-SPRITE_SIZE/2, SPRITE_SIZE, SPRITE_SIZE) = 0 Then 
+					a = 0
+				End If 
+			Next 
+		Wend 
+		addTimePickUp(x, y)
+		addClockCount = 0
+	End If
+	
 	For p.player = Each player
 		If p\typeOf Then
 			If p\size <= 5 Then player1won = 1
 		Else
-			If p\size <= 5 Then player1won = 1
+			If p\size <= 5 Then player2won = 1
 		End If
 	Next
 End Function
@@ -541,7 +657,7 @@ Function generateLevel()
 		a = 1
 		While a
 			For l.loot = Each loot
-				If collision(l\x-l\size/2, l\y-l\size/2, l\size, l\size, x-l\size/2, y-l\size/2, l\size, l\size) And x < WIN_W-l\size And x > 0 And y < WIN_H-l\size And y > 0 Then
+				If collision(l\x-l\size/2, l\y-l\size/2, l\size, l\size, x-l\size, y-l\size/2, l\size, l\size) And x < WIN_W-l\size*2 And x > 0 And y < WIN_H-l\size And y > 0 Then
 					x = (SPRITE_SIZE*2) * Rand(WIN_W/(SPRITE_SIZE*2))
 					y = (SPRITE_SIZE*2) * Rand(WIN_H/(SPRITE_SIZE*2))
 				Else 
@@ -559,44 +675,69 @@ Function update()
 		updatePlayer()
 		updateProjectile()
 		updateLoot()
+		updateTimePickUp()
 		
 		updateLevel()
+	Else
+		If JoyHit(8) Then
+			restartGame()
+			startScreen = 0
+		End If
 	End If 
+	
+	If startScreen = 1 Then
+		If JoyHit(8, 0) Or JoyHit(8, 1) Then
+			restartGame()
+			startScreen = 0
+		End If
+	End If
 End Function 
 
 Global buildInstructionsX# = WIN_W/2
 Global buildInstructionsY# = -WIN_H/2
 
 Function draw()
-	drawPlayer()
-	drawProjectile()
-	drawLoot()
+	If startScreen Then
+		drawText(WIN_W/2-32, WIN_H/2-150, "SHOOT GAME", 1)
+		
+		drawText(WIN_W/2-32, WIN_H/2-100+17, "BOTH PLAYERS MOVE WITH LEFT STICK "+Chr(Asc(";")+1), 1)
+		drawText(WIN_W/2-32, WIN_H/2-100+18*2, "BOTH PLAYERS AIM WITH RIGHT STICK ;", 1)
+		drawText(WIN_W/2-20, WIN_H/2-100+18*3, "BOTH PLAYERS SHOOT WITH RIGHT TRIGGER "+Chr(Asc(";")+2), 1)
+		drawText(WIN_W/2-32, WIN_H/2-100+18*4, "PLAYER 2 CAN DESTROY BOXES", 1)
+		drawText(WIN_W/2-20, WIN_H/2-100+18*5, "PLAYER 1 CAN FIX BOXES TO MAKE BOTH GROW", 1)
+		drawText(WIN_W/2-32, WIN_H/2-100+18*6, "DESTROY THE OTHER TO WIN", 1)
+		drawText(WIN_W/2-32, WIN_H/2-100+18*7, "PICK UP CLOCK FOR SLOW-MOTION", 1)
+		
+		drawText(WIN_W/2-32, WIN_H/2+100, "PRESS START TO START", 1)
+	Else
+		drawPlayer()
+		drawProjectile()
+		drawLoot()
+		drawTimePickUp()
+		
+		Line 0-offsetX, 0-offsetY, -offsetX, WIN_H-offsetY
+		Line GAME_STAGE_W-offsetX, 0-offsetY, GAME_STAGE_W-offsetX, WIN_W-offsetY
+		
+		drawText(buildInstructionsX-offsetX, buildInstructionsY-offsetY, "PRESS : TO FIX BOX", 1)
 	
-	Line 0-offsetX, 0-offsetY, -offsetX, WIN_H-offsetY
-	Line GAME_STAGE_W-offsetX, 0-offsetY, GAME_STAGE_W-offsetX, WIN_W-offsetY
+		If player1Won Then 
+			Text WIN_W/2, WIN_H/2, "PLAYER 1 WON", 1, 1
+		End If 
 	
-	drawText(buildInstructionsX-offsetX, buildInstructionsY-offsetY, "PRESS : TO FIX BOX", 1)
-	
-	If player1Won Then 
-		Text WIN_W/2, WIN_H/2, "PLAYER 1 WON", 1, 1
-	End If 
-	
-	If player2Won Then
-		Text WIN_W/2, WIN_H/2, "PLAYER 2 WON", 1, 1
+		If player2Won Then
+			Text WIN_W/2, WIN_H/2, "PLAYER 2 WON", 1, 1
+		End If
 	End If
 End Function
 
-generateLevel()
-
-addPlayer(100, 200, 0)
-addPlayer(300, 300, 1)
-
-addLoot(200, 200)
+restartGame()
 
 HidePointer
 
 While Not KeyHit(1)
 	Cls 
+	time = lerp(time, 1, 0.002)
+	
 	update()
 	draw()
 	
@@ -604,7 +745,13 @@ While Not KeyHit(1)
 	
 	offsetX = lerp(offsetX, midPointX-WIN_W/2, 0.1)
 	
-	;drawText(200, 200, "ABCDZ 012345679 :;<=", 0)
-
+	If WATCH_DOG Then
+		watchDogCount = watchDogCount + 1
+	
+		If watchDogCount >= WATCH_DOG_MAX Then
+			watchDogCount = 0
+			Goto start
+		End If
+	End If
 	Flip
 Wend
